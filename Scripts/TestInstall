@@ -1,0 +1,4 @@
+#!/bin/bash
+
+cmake -S . -B Build && cd Build && sudo make && ctest -VV && sudo cmake --install .
+
