@@ -67,6 +67,7 @@ int main(int argc, char * argv[]) {
 	   if (results[i].data[0] != 'A' + i) { continue; }
 	   foundcs[i] = true;
 	   nfound++;
+	   sps.Remove(i);
 	}
    }
    
