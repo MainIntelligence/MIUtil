@@ -13,18 +13,11 @@ struct TestComparor : public FullComparor<TestComparor> {
 };
 
 
-//SubProcess(es) Test Utilities
-struct SubProcResult {
-   char carr [32] {'\0'};
-};
 
 template <char c>
-void FillArr(SubProcResult& res, std::mutex& mtx) {
-   mtx.lock();
-   
-   for (unsigned int i = 0; i < 31; i++) { res.carr[i] = c; }
-   
-   mtx.unlock();
+void FillArr(SharedData<char[32]> & sdat) {
+   WaitAccessor lock (sdat);
+   for (unsigned int i = 0; i < 31; i++) { sdat.data[i] = c; }
 };
 
 
@@ -50,38 +43,38 @@ int main(int argc, char * argv[]) {
    if ( tc != 1 || tc <= 0 || tc >= 2 ) { return 1; }
    
    //*********** SubProcess, SubProcesses, and SortedArray tests ********************
-   SubProcesses<8, SubProcResult> sps; 
+   SubProcesses<8> sps;
+   SharedData<char[32]> results [8];
    
-   sps.Add(FillArr<'A'>);
-   sps.Add(FillArr<'B'>);
-   sps.Add(FillArr<'C'>);
-   sps.Add(FillArr<'D'>);
-   sps.Add(FillArr<'E'>);
-   sps.Add(FillArr<'F'>);
-   sps.Add(FillArr<'G'>);
-   sps.Add(FillArr<'H'>);
+   sps.Add(FillArr<'A'>, std::ref(results[0]));
+   sps.Add(FillArr<'B'>, std::ref(results[1]));
+   sps.Add(FillArr<'C'>, std::ref(results[2]));
+   sps.Add(FillArr<'D'>, std::ref(results[3]));
+   sps.Add(FillArr<'E'>, std::ref(results[4]));
+   sps.Add(FillArr<'F'>, std::ref(results[5]));
+   sps.Add(FillArr<'G'>, std::ref(results[6]));
+   sps.Add(FillArr<'H'>, std::ref(results[7]));
    
    bool foundcs [8] {false};
-   unsigned int found = 0;
-   SubProcess<SubProcResult> * psp = nullptr;
-   unsigned int foundid = 0;
-   while (found < 8) {
-     foundid = sps.BeginCheckAnyFrom(psp, 0);
-     if (psp == nullptr) { continue; }
-     if ( (psp->result.carr[0] - foundid) != 'A' ) { fprintf(stderr, "Unexpected FillArr result\n"); return 1; }
-     
-     foundcs[foundid] = true;
-     found++;
-     
-     psp->EndCheck();
-     sps.Remove(foundid);
+   unsigned int nfound = 0;
+   
+   while (nfound < 8) {
+	for (unsigned int i = 0; i<8; i++) {
+	   if (foundcs[i] == true) { continue; }
+	   BusyAccessor lock (results[i]);
+	   
+	   //Check that the thread has done its work
+	   if (results[i].data[0] != 'A' + i) { continue; }
+	   foundcs[i] = true;
+	   nfound++;
+	}
    }
    
    for (unsigned int i = 0; i < 8; i++) { 
-      if (foundcs[i] != true) { 
-   	fprintf(stderr, "Not all subprocesses recorded results!?!\n"); 
+      if (foundcs[i] != true) {
+   	fprintf(stderr, "Not all subprocesses recorded results!?! %u\n", i); 
    	return 1; 
-      } 
+      }
    }
    /*****************************************************/
    /*****************************************************/

@@ -2,13 +2,13 @@
 #include "Utils.h"
 //#include <iostream>
 
-template <typename T>
+template <typename T, typename ALIGNT = T>
 class Vector {
 
 public:
   size_t capElements = 0;
   size_t numElements = 0;
-  T* data = nullptr;
+  alignas(ALIGNT) T* data = nullptr;
 
   void Resize(size_t newCap);
   //check to resize the vector before adding a number of elements
@@ -47,8 +47,8 @@ public:
 };
 
 //**************** Implementations ********************
-template <typename T>
-void Vector<T>::Resize(size_t newCap) {
+template <typename T, typename ALIGNT>
+void Vector<T, ALIGNT>::Resize(size_t newCap) {
   T* newData = new T[newCap];
   if (data) {
     pcpy(newData, numElements, data);
@@ -58,8 +58,8 @@ void Vector<T>::Resize(size_t newCap) {
   data = newData;
 }
 
-template <typename T>
-void Vector<T>::CheckResizeAdd(const unsigned int toadd) {
+template <typename T, typename ALIGNT>
+void Vector<T, ALIGNT>::CheckResizeAdd(const unsigned int toadd) {
   unsigned int needed = numElements + toadd;
   unsigned int newcap = capElements;
   if (newcap == 0) { newcap = 1; } //should just make 1 the minimum size, but whatever
@@ -76,15 +76,15 @@ void Vector<T>::CheckResizeAdd(const unsigned int toadd) {
   capElements = newcap;
 }
 
-template <typename T>
-void Vector<T>::AddEnd(const T& obj) {
+template <typename T, typename ALIGNT>
+void Vector<T, ALIGNT>::AddEnd(const T& obj) {
   if (numElements == capElements) { Resize(2 * ((capElements >= 1) ? capElements : 1)); }
   *(data + numElements) = obj;
   numElements++;
 }
 
-template <typename T>
-void Vector<T>::AddEnd(const T* objs, const unsigned int n) {
+template <typename T, typename ALIGNT>
+void Vector<T, ALIGNT>::AddEnd(const T* objs, const unsigned int n) {
  CheckResizeAdd(n);
  for (unsigned int i = 0; i < n ; i++) {
    data[numElements + i] = objs[i];
@@ -93,8 +93,8 @@ void Vector<T>::AddEnd(const T* objs, const unsigned int n) {
 }
 
 
-template <typename T>
-void Vector<T>::ShiftRemoveIndex(const int i)  {
+template <typename T, typename ALIGNT>
+void Vector<T, ALIGNT>::ShiftRemoveIndex(const int i)  {
   for(T* pdata = data + i; pdata < pdata + numElements - 1; pdata++) {
     *pdata = *(pdata + 1);
   }
@@ -102,8 +102,8 @@ void Vector<T>::ShiftRemoveIndex(const int i)  {
   *(data + numElements) = T{};
 }
 
-template <typename T>
-Vector<T>& Vector<T>::operator=(const Vector<T>& vec) {
+template <typename T, typename ALIGNT>
+Vector<T, ALIGNT>& Vector<T, ALIGNT>::operator=(const Vector<T, ALIGNT>& vec) {
   if (data != nullptr) {
     if (capElements < vec.numElements) { //needs resize
       delete data;
@@ -117,8 +117,8 @@ Vector<T>& Vector<T>::operator=(const Vector<T>& vec) {
   return *this;
 }
 
-template <typename T>
-Vector<T>& Vector<T>::operator=(Vector<T>&& vec) {
+template <typename T, typename ALIGNT>
+Vector<T, ALIGNT>& Vector<T, ALIGNT>::operator=(Vector<T, ALIGNT>&& vec) {
   Swap(capElements, vec.capElements);
   Swap(numElements, vec.numElements);
   Swap(data, vec.data);

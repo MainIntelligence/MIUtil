@@ -2,51 +2,55 @@
 #include <thread>
 #include <mutex>
 
-//Process thread wrapper - lifetime of SubProcess == lifetime of worker thread
 
-template <typename RT>
-struct SubProcess {
-   
-   std::thread thread;
-   std::mutex mtx;
-   RT result;
-   
-   //CallT must accept RT& and std::mutex& parameter, makes new thread executing func
-   template <typename CallT>
-   SubProcess(CallT func) : thread(func, std::ref(result), std::ref(mtx)) {};
-   ~SubProcess() { thread.join(); }
-   
-   //use when you have other stuff to do/don't want to wait for results
-   //If return is true, you must call EndCheck / unlock the thread
-   bool BeginCheckBusy();
-   //use when you can't do anything until you obtain result
-   void BeginCheckWait();
-   //unlock so that the other thread can continue accessing result
-   void EndCheck();
+//Just using some desirable naming conventions here ;)
+struct Lockable {
+  std::mutex mtx;
+  
+  bool BeginUseBusy()   { return mtx.try_lock(); }
+  void BeginUseWait()   { mtx.lock();     }
+  void EndUse()         { mtx.unlock();   }
 };
 
-template <typename RT>
-bool SubProcess<RT>::BeginCheckBusy() {
-  return mtx.try_lock();
-}
+//A convenience thing using RAII to make proper lock handling slightly easier
+struct BusyAccessor {
+  Lockable& lock;
+  bool accessed = false;
+  
+  BusyAccessor(Lockable& lock) : lock(lock) { accessed = lock.BeginUseBusy(); }
+  ~BusyAccessor() { if (accessed) { lock.EndUse(); } }
+};
+struct WaitAccessor {
+  Lockable& lock;
+  
+  WaitAccessor(Lockable& lock) : lock(lock) { lock.BeginUseWait(); }
+  ~WaitAccessor() { lock.EndUse(); }
+};
 
-template <typename RT>
-void SubProcess<RT>::BeginCheckWait() {
-  mtx.lock();
-}
 
-template <typename RT>
-void SubProcess<RT>::EndCheck() {
-  mtx.unlock();
-}
+//Helper which may optionally be passed on creation of subprocess, a mutex is generally needed,
+//	but may be passed without data (like when the threads need to share a character device)
+template <typename T>
+struct SharedData : public Lockable {
+   T data;
+};
 
+
+//Process thread wrapper - lifetime of SubProcess == lifetime of worker thread
+struct SubProcess { 
+   std::thread thread;
+   
+   template <typename CallT, typename ... Args>
+   SubProcess(CallT func, Args... args) : thread(func, std::ref(args...)) {};
+   ~SubProcess() { thread.join(); }
+};
 
 #include "SortedArray.h"
 //NOTE: NO SAFETY IN MAKING SURE YOU DON'T ADD MORE THAN "CAP" SubProcesses
-template <unsigned int CAP, typename RT>
+template <unsigned int CAP>
 struct SubProcesses {
    //Making this an explicit array of SubProcesses might need automatically constructing them (which is bad)
-   alignas(SubProcess<RT>) char spdat [CAP * sizeof(SubProcess<RT>)];
+   alignas(SubProcess) char spdat [CAP * sizeof(SubProcess)];
    unsigned int spend = 0;
    //A sorted array of removed indices ( fill these when adding into spdat )
    SortedArray<int, CAP - 1> remIDs;
@@ -54,25 +58,25 @@ struct SubProcesses {
    void Clear();
    SubProcesses() {}
    ~SubProcesses() { Clear(); }
-   SubProcess<RT> * GetSubProc(const unsigned int i) { return reinterpret_cast<SubProcess<RT>*>(spdat + sizeof(SubProcess<RT>) * i); }
-   
-   template <typename CallT>
-   unsigned int Add(CallT func);
-   
+   SubProcess* GetSubProc(const unsigned int i) { return reinterpret_cast<SubProcess*>(spdat + sizeof(SubProcess) * i); }
+   SubProcess& operator[]( const unsigned int i ) { return *GetSubProc(i);}
+      
+   template <typename CallT, typename ...Args>
+   unsigned int Add(CallT func, Args... args);
    void Remove(const unsigned int i);
    
    /*returns the first subprocess (over or at the given index) with an unlocked result, 
    	and locks it (if an unlocked result is found), index is return value, given pointer reference 
    	is filled with the subprocess address. if no unlocked results are found the pointer is nullified */
-   unsigned int BeginCheckAnyFrom(SubProcess<RT>*& pref, unsigned int i = 0);
+   //unsigned int BeginCheckAnyFrom(SubProcess*& pref, unsigned int i = 0);
 
 protected:
    //Get the first index not in use by a SubProcess + remove it from remIDs if obtained from there, or increment spend
    unsigned int FindUnusedIndex(); 
 };
 
-template <unsigned int CAP, typename RT>
-unsigned int SubProcesses<CAP, RT>::FindUnusedIndex() {
+template <unsigned int CAP>
+unsigned int SubProcesses<CAP>::FindUnusedIndex() {
   if (remIDs.total > 0) { //maybe take from end of remIDs to reduce shifting time
      int i = remIDs[0];
      remIDs.RemoveIndex(0);
@@ -82,17 +86,17 @@ unsigned int SubProcesses<CAP, RT>::FindUnusedIndex() {
   return spend - 1;
 }
 
-template <unsigned int CAP, typename RT>
-template <typename CallT>
-unsigned int SubProcesses<CAP, RT>::Add(CallT func) { 
+template <unsigned int CAP>
+template <typename CallT, typename ...Args>
+unsigned int SubProcesses<CAP>::Add(CallT func, Args... args) { 
   unsigned int i = FindUnusedIndex();
-  new (spdat + sizeof(SubProcess<RT>) * i) SubProcess<RT> (func);
+  new (spdat + sizeof(SubProcess) * i) SubProcess (func, args...); //construct SubProcess
   return i;
 }
 
-template <unsigned int CAP, typename RT>
-void SubProcesses<CAP, RT>::Remove(const unsigned int i) {
-  GetSubProc(i)->~SubProcess<RT>();
+template <unsigned int CAP>
+void SubProcesses<CAP>::Remove(const unsigned int i) {
+  GetSubProc(i)->~SubProcess();
   
   if (i == spend - 1) { 
      spend--;
@@ -104,19 +108,20 @@ void SubProcesses<CAP, RT>::Remove(const unsigned int i) {
   else { remIDs.Add(i); }
 }
 
-template <unsigned int CAP, typename RT>
-void SubProcesses<CAP, RT>::Clear() {
+template <unsigned int CAP>
+void SubProcesses<CAP>::Clear() {
   unsigned int remi = 0;
   for (unsigned int i = 0; i < spend ; i++) {
     if (i == remIDs[remi]) { remi++; continue; }
-    GetSubProc(i)->~SubProcess<RT>();
+    GetSubProc(i)->~SubProcess();
   }
   spend = 0;
   remIDs.Clear();
 }
 
+/*
 template <unsigned int CAP, typename RT>
-unsigned int SubProcesses<CAP, RT>::BeginCheckAnyFrom(SubProcess<RT>*& pref, unsigned int i) {
+unsigned int SubProcesses<CAP, RT>::BeginCheckAnyFrom(SubProcess*& pref, unsigned int i) {
   unsigned int remi = remIDs.BinarySearch(i);
   if ( (i > remi) && (remIDs.total - 1 != remi) ) { remi++; }
   
@@ -128,6 +133,6 @@ unsigned int SubProcesses<CAP, RT>::BeginCheckAnyFrom(SubProcess<RT>*& pref, uns
   
   pref = nullptr;
   return i;
-}
+}*/
 
 
