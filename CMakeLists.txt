@@ -15,6 +15,8 @@ enable_testing()
 
 if ( BUILD_TESTING )
   add_executable( testexec test.cpp )
+  add_executable( mathtest mathtest.cpp)
   #target_link_libraries (testexec ${CMAKE_THREAD_LIBS_INIT})
   add_test( NAME test0 COMMAND ./testexec )
+  add_test( NAME test1 COMMAND ./mathtest )
 endif()
