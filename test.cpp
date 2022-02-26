@@ -1,6 +1,7 @@
 #include "Src/Vector.h"
 #include "Src/FullComparor.h"
 #include "Src/SubProcess.h"
+#include "Src/IDGraph.h"
 
 #include <cstdio>
 
@@ -37,6 +38,14 @@ int main(int argc, char * argv[]) {
         return 1;
       }
    }
+   Vector<int> swappedvec = vec;
+   
+   //Error whenever resize happens and elements are recopied to new memory
+   
+   Vector<Vector<int>> vvec;
+   vvec.AddEnd(vec);
+   vvec.AddEnd( Vector<int>(1) );
+   vvec.AddEnd(vec);
    
    //***************** FullComparor test ************************
    TestComparor tc(1);
@@ -78,6 +87,30 @@ int main(int argc, char * argv[]) {
       }
    }
    /*****************************************************/
+   IDGraph<unsigned char> cgraph (2);
+   cgraph.AddNode();
+   cgraph.AddNode();
+   cgraph.AddNode();
+   cgraph.AddNext(0, 1);
+   cgraph.AddNext(0, 2);
+   cgraph.AddNext(1, 2);
+   cgraph.AddNext(1, 0);
+   cgraph.AddNext(2, 1);
+   cgraph.AddNext(2, 0);
+   
+   char expectseq [6] {1, 2, 0, 2, 0, 1};
+   unsigned int expeci = 0;
+   IDGraph<unsigned char>::Traverser trav (cgraph);
+   
+   for (unsigned int i = 0; i < cgraph.TotalNodes(); i++) {
+     for ( trav.Goto(i); !trav.Done() ; trav.GoNext() ) {
+       if (expectseq[expeci] != trav.This()) {
+          fprintf(stderr, "Unexpected result in graph structure\n");
+          return 1;
+       }
+       expeci++;
+     }
+   }
    /*****************************************************/
    /*****************************************************/
    return 0;
