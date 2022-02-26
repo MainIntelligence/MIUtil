@@ -6,25 +6,27 @@ template <typename T, typename ALIGNT = T>
 class Vector {
 
 public:
-  size_t capElements = 0;
-  size_t numElements = 0;
+  unsigned int capElements = 0;
+  unsigned int numElements = 0;
   alignas(ALIGNT) T* data = nullptr;
 
-  void Resize(size_t newCap);
+  void Resize(unsigned int newCap);
   //check to resize the vector before adding a number of elements
   void CheckResizeAdd(const unsigned int toadd);
   
   
 //Constructors
   Vector() : capElements{ 0 }, numElements{ 0 }, data{ nullptr } {}
-  Vector(size_t startCap) : capElements{ startCap }, numElements{ 0 }, data{ new T[startCap] } {}
-  Vector(const T* dat, size_t len) : capElements{ len }, numElements{ len }, data{ new T[len] } { pcpy(data, len, dat); }
-  Vector(const T* dat, size_t len, size_t cap) : capElements{ cap }, numElements{ len }, data{ new T[cap] } { pcpy(data, len, dat); }
-  ~Vector() { delete data; }
+  Vector(unsigned int startCap) : capElements{ startCap }, numElements{ 0 }, data{ new T[startCap]{} } {}
+  Vector(const T* dat, unsigned int len) : capElements{ len }, numElements{ len }, data{ new T[len]{} } { pcpy(data, len, dat); }
+  Vector(const T* dat, unsigned int len, unsigned int cap) : capElements{ cap }, numElements{ len }, data{ new T[cap] } { pcpy(data, len, dat); }
+  constexpr Vector(const Vector&);
+  
+  ~Vector() { if (data) { delete [] data; } }
   
   //named/simple accessors
-  size_t Size() const noexcept { return numElements; }
-  size_t Capacity() const noexcept { return capElements; }
+  unsigned int Size() const noexcept { return numElements; }
+  unsigned int Capacity() const noexcept { return capElements; }
   
   const T& operator[](const int i) const { return data[i]; }
   T& operator[](const int i) { return data[i]; }
@@ -48,11 +50,31 @@ public:
 
 //**************** Implementations ********************
 template <typename T, typename ALIGNT>
-void Vector<T, ALIGNT>::Resize(size_t newCap) {
-  T* newData = new T[newCap];
+constexpr Vector<T, ALIGNT>::Vector(const Vector& v) {
+   if (capElements < v.numElements) { 
+       if ( data != nullptr ) { delete[] data; }
+       if ( capElements == 0 ) { capElements = 1; }
+       
+       do { 
+          capElements <<= 1;
+       } while (capElements < v.numElements);
+       
+       data = new T[capElements]{};
+   }
+   
+   numElements = v.numElements;
+   for ( unsigned int i = 0; i < v.numElements ; i++) {
+      *(data + i) = *( v.data + i );
+   }
+}
+
+
+template <typename T, typename ALIGNT>
+void Vector<T, ALIGNT>::Resize(unsigned int newCap) {
+  T* newData = new T[newCap]{};
   if (data) {
-    pcpy(newData, numElements, data);
-    delete data;
+    for ( unsigned int i = 0; i < numElements ; i++ ) { *(newData + i) = *(data + i); }
+    delete [] data;
   }
   capElements = newCap; //newSize should never be less than the number of elements
   data = newData;
@@ -62,23 +84,26 @@ template <typename T, typename ALIGNT>
 void Vector<T, ALIGNT>::CheckResizeAdd(const unsigned int toadd) {
   unsigned int needed = numElements + toadd;
   unsigned int newcap = capElements;
+  if ( needed <= capElements ) { return; }
+  
   if (newcap == 0) { newcap = 1; } //should just make 1 the minimum size, but whatever
   
   while (newcap < needed) { newcap <<= 1; }
-  if (newcap == capElements) { return; }
   
-  T * newmem = new T [newcap];
+  T * newmem = new T [newcap]{};
   //copy data to new memory
-  for ( unsigned int i = 0; i < numElements ; i++ ) { newmem[i] = data[i]; }
-  //free and swap
-  delete data;
+  if (data != nullptr) {
+    for ( unsigned int i = 0; i < numElements ; i++ ) { newmem[i] = data[i]; }
+    delete [] data;
+  }
+  
   data = newmem;
   capElements = newcap;
 }
 
 template <typename T, typename ALIGNT>
 void Vector<T, ALIGNT>::AddEnd(const T& obj) {
-  if (numElements == capElements) { Resize(2 * ((capElements >= 1) ? capElements : 1)); }
+  if (numElements == capElements) { CheckResizeAdd(1); }
   *(data + numElements) = obj;
   numElements++;
 }
@@ -102,19 +127,25 @@ void Vector<T, ALIGNT>::ShiftRemoveIndex(const int i)  {
   *(data + numElements) = T{};
 }
 
+
 template <typename T, typename ALIGNT>
-Vector<T, ALIGNT>& Vector<T, ALIGNT>::operator=(const Vector<T, ALIGNT>& vec) {
-  if (data != nullptr) {
-    if (capElements < vec.numElements) { //needs resize
-      delete data;
-      capElements = vec.capElements;
-      data = new T[capElements]{};
-    }
-  }
-  
-  numElements = vec.numElements;
-  pcpy(data, numElements, vec.data);
-  return *this;
+Vector<T, ALIGNT>& Vector<T, ALIGNT>::operator=(const Vector<T, ALIGNT>& v) {
+   if (capElements < v.numElements) { 
+       if ( data != nullptr ) { delete [] data; }
+       if ( capElements == 0 ) { capElements = 1; }
+       
+       do { 
+          capElements <<= 1;
+       } while (capElements < v.numElements);
+       
+       data = new T[capElements]{};
+   }
+   
+   numElements = v.numElements;
+   for ( unsigned int i = 0; i < v.numElements ; i++) {
+      *(data + i) = *( v.data + i );
+   }
+   return *this;
 }
 
 template <typename T, typename ALIGNT>
